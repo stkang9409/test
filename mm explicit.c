@@ -72,7 +72,6 @@ static char *heap_listp;
 static char *last_freep = 0;
 // static char *HEAD = NULL;
 static char *FOOT = 0;
-static char *heap_listp;
 
 static void *coalesce(void *bp)
 {
@@ -163,35 +162,25 @@ static void *find_fit(size_t asize)
 
 static void place(void *bp, size_t asize)
 {
-    void *pred_node, *succ_node; 
     size_t csize = GET_SIZE(HDRP(bp));
-    // free list의 bp를 기준으로 그 bp의 pred와 succ존재여부를 탐색. 
-    //bp의 pred의 succ을 bp의 succ으로 연결. 그 역도 마찬가지.
-    if ((pred_node = (void*)GET(PREC(bp))) != 0){
-        PUT(SUCC(pred_node),GET(SUCC(bp))); // pred node의 successor에 bp의 successor를 넣음.
-    }
-    if ((succ_node= GET(SUCC(bp)))!= 0){
-        PUT(PREC(succ_node), GET(PREC(bp)));
 
-    }
-    
     if ((csize - asize) >= (2 * DSIZE))
     {
-        PUT(HDRP(bp), PACK(asize, 1)); // heap list
+        PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);
-
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-        PUT(PREC(bp), last_freep); // free block list - 자른 블록이 이제 last free p로 갱신. 내 predecessor가 기존의 last freep.
+        PUT(PREC(bp), last_freep); // 잘린 내가 이제 last free p 니까 내 pre가 지금의 last free
         PUT(SUCC(bp), 0);          // 내가 라스트라서 내 뒤는 없음
-        PUT(SUCC(last_freep), bp); // 기존의 last freep가 미래의 last freep에게 지위를 넘겨주기 위한 과정.
+        PUT(SUCC(last_freep), bp);
         last_freep = bp; // 내가 라스트
     }
-    else // 갖고 온 블록만 딱 넣을 수 있는 상황. free block이 나올수 없음.
+    else
     {
         PUT(HDRP(bp), PACK(csize, 1));
-        PUT(FTRP(bp), PACK(csize, 1));   
+        PUT(FTRP(bp), PACK(csize, 1));
+        
     }
 }
 /* 
