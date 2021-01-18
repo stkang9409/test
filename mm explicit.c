@@ -33,7 +33,7 @@ team_t team = {
     "Saihim Cho",
     /* Second member's email address (leave blank if none) */
     "saihimcho@kaist.ac.kr",
-    };
+};
 
 // /* single word (4) or double word (8) alignment */
 // #define ALIGNMENT 8
@@ -60,10 +60,18 @@ team_t team = {
 /* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define PREC(bp) (char *)(bp)
+#define SUCC(bp) ((char *)(bp) + WSIZE)
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
+
+// #define PREV_FREE_BLKP(bp)
+
 static char *heap_listp;
+static char *last_freep = 0;
+// static char *HEAD = NULL;
+static char *FOOT = 0;
 
 static void *coalesce(void *bp)
 {
@@ -109,6 +117,8 @@ static void *extend_heap(size_t words)
     /* Initialize free block header/footer and the epilogue header */
     PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
     PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
+    PUT(PREC(bp), last_freep);            /* Free block footer */
+    PUT(SUCC(bp), FOOT);                  /* Free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
     /* Coalesce if the previous block was free */
     return coalesce(bp);
@@ -118,6 +128,7 @@ static void *extend_heap(size_t words)
  */
 int mm_init(void)
 {
+    void *tmp;
     /* Create the initial empty heap */
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
@@ -129,8 +140,9 @@ int mm_init(void)
     heap_listp += (2 * WSIZE);
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
+    if ((tmp = extend_heap(CHUNKSIZE / WSIZE)) == NULL)
         return -1;
+    last_freep = (char *)tmp;
     return 0;
 }
 
@@ -138,9 +150,9 @@ static void *find_fit(size_t asize)
 {
     /* First-fit search */
     void *bp;
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    for (bp = last_freep; GET_SIZE(HDRP(bp)) > 0; bp = GET(bp))
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        if ((asize <= GET_SIZE(HDRP(bp)))) // !GET_ALLOC(HDRP(bp)) &&
         {
             return bp;
         }
@@ -159,11 +171,16 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
+        PUT(PREC(bp), last_freep); // 잘린 내가 이제 last free p 니까 내 pre가 지금의 last free
+        PUT(SUCC(bp), 0);          // 내가 라스트라서 내 뒤는 없음
+        PUT(SUCC(last_freep), bp);
+        last_freep = bp; // 내가 라스트
     }
     else
     {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
+        
     }
 }
 /* 
@@ -172,15 +189,6 @@ static void place(void *bp, size_t asize)
  */
 void *mm_malloc(size_t size)
 {
-    // int newsize = ALIGN(size + SIZE_T_SIZE);
-    // void *p = mem_sbrk(newsize);
-    // if (p == (void *)-1)
-    //     return NULL;
-    // else
-    // {
-    //     *(size_t *)p = size;
-    //     return (void *)((char *)p + SIZE_T_SIZE);
-    // }
     size_t asize;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     char *bp;
