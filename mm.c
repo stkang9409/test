@@ -83,7 +83,7 @@ static void place(void *bp, size_t asize);
 void *mm_malloc(size_t size);
 void mm_free(void *bp);
 void *mm_realloc(void *bp, size_t size);
-
+static void remove_block(void *bp);
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -100,10 +100,10 @@ int mm_init(void)
 
     heap_listp += (2 * WSIZE);
 
-    printf("*****mm_init*******\n");
-    printf("\nheap listp: %p\n", heap_listp);
-    printf("PR_header:     %p\n", HDRP(heap_listp));
-    printf("PR_footer:     %p\n", FTRP(heap_listp));
+    // printf("*****mm_init*******\n");
+    // printf("\nheap listp: %p\n", heap_listp);
+    // printf("PR_header:     %p\n", HDRP(heap_listp));
+    // printf("PR_footer:     %p\n", FTRP(heap_listp));
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     // if ((tmp = extend_heap(CHUNKSIZE / WSIZE)) == NULL)
@@ -111,8 +111,8 @@ int mm_init(void)
         return -1;
     // last_freep = (char *)tmp;
 
-    printf("last_freep: %p\n", last_freep);
-    printf("HEADER(last_freep): %d\n", GET(HDRP(last_freep)));
+    // printf("last_freep: %p\n", last_freep);
+    // printf("HEADER(last_freep): %d\n", GET(HDRP(last_freep)));
 
     return 0;
 }
@@ -123,10 +123,22 @@ static void *coalesce(void *bp)
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 
     size_t size = GET_SIZE(HDRP(bp));
-
+    if (last_freep == 0){
+        return bp;
+    }
     if (prev_alloc && next_alloc)
     { /* Case 1 */
-        return bp;
+        if (bp == last_freep){
+            return bp;
+        }
+        else {
+            PUT(PREC(bp), last_freep);
+            PUT(SUCC(last_freep), (char *) bp);
+            PUT(SUCC(bp), NULL);
+            last_freep = bp;
+            bp = last_freep;
+            return bp;
+        }
     }
     else if (prev_alloc && !next_alloc)
     { /* Case 2 */
@@ -191,12 +203,36 @@ static void *coalesce(void *bp)
     }
     else
     { /* Case 4 */
+        void *next_bp, *tmp_bp;
+        next_bp = NEXT_BLKP(bp);
+        tmp_bp = bp;
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
                 GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+        remove_block(bp);
+        remove_block(next_bp);
+        //내가 last_freep인 경우
+        if (next_bp == last_freep){
+            void* prev_of_next_bp = (void*)GET(PREC(next_bp));
+            PUT(PREC(bp),prev_of_next_bp);
+            PUT(SUCC(prev_of_next_bp),bp);
+            last_freep = bp;
+        }
+        else if (bp == last_freep){
+            PUT(SUCC(GET(PREC(bp))),bp);
+        }
+        //내가 last_freep가 아닌 경우
+        else{
+            PUT(PREC(bp), last_freep);
+            PUT(SUCC(last_freep), bp);
+            
+            PUT(SUCC(bp), NULL);
+            last_freep = bp;
+        }
     }
+    bp = last_freep;
     return bp;
 }
 
@@ -237,7 +273,7 @@ static void *extend_heap(size_t words)
     //return coalesce(bp); //original code
     //debug code
     char *temp_bp = coalesce(bp);
-    printf("***extned_heap returns bp: %p***\n", temp_bp);
+    // printf("***extned_heap returns bp: %p***\n", temp_bp);
     return temp_bp;
 }
 
@@ -251,7 +287,7 @@ void *mm_malloc(size_t size)
     size_t extendsize; /* Amount to extend heap if no fit */
     char *bp;
 
-    printf("\n*****mm_malloc*******\n");
+    // printf("\n*****mm_malloc*******\n");
 
     /* Ignore spurious requests */
     if (size == 0)
@@ -263,8 +299,8 @@ void *mm_malloc(size_t size)
     else
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
 
-    printf("size:        %d\n", size);
-    printf("asize:       %d\n", asize);
+    // printf("size:        %d\n", size);
+    // printf("asize:       %d\n", asize);
 
     /* Search the free list for a fit */
     if ((bp = find_fit(asize)) != NULL)
@@ -285,7 +321,7 @@ static void *find_fit(size_t asize)
 {
     /* First-fit search */
     void *bp;
-    for (bp = last_freep; PREC(bp) != 0; bp = (void *)GET(PREC(bp)))
+    for (bp = last_freep; bp != 0; bp = (void *)GET(PREC(bp)))
     {
         if ((asize <= GET_SIZE(HDRP(bp)))) // !GET_ALLOC(HDRP(bp)) &&
         {
@@ -360,11 +396,11 @@ static void place(void *bp, size_t asize)
         }
     }
 
-    printf("*****AFTER*******\n");
-    printf("Header:      %p\n", HDRP(bp));
-    printf("Footer:      %p\n", FTRP(bp));
-    printf("Predecessor: %p [%p] \n", PREC(bp), GET(PREC(bp)));
-    printf("successor:   %p [%p] \n", SUCC(bp), GET(SUCC(bp)));
+    // printf("*****AFTER*******\n");
+    // printf("Header:      %p\n", HDRP(bp));
+    // printf("Footer:      %p\n", FTRP(bp));
+    // printf("Predecessor: %p [%p] \n", PREC(bp), GET(PREC(bp)));
+    // printf("successor:   %p [%p] \n", SUCC(bp), GET(SUCC(bp)));
 }
 
 /*
