@@ -121,7 +121,9 @@ static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+
     size_t size = GET_SIZE(HDRP(bp));
+
     if (prev_alloc && next_alloc)
     { /* Case 1 */
         return bp;
@@ -131,6 +133,30 @@ static void *coalesce(void *bp)
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
+
+        
+        remove_block(NEXT_BLKP(bp));
+
+        //내가 last_freep인 경우
+        if (NEXT_BLKP(bp) == last_freep)
+        {
+            PUT(PREC(bp), (void *)GET(PREC(NEXT_BLKP(bp))));
+
+            if (GET(PREC(bp)))
+            {
+                PUT(SUCC((void *)GET(PREC(bp))), (void *)bp);
+            }
+        }
+        //내가 last_freep가 아닌 경우
+        else
+        {
+            PUT(PREC(bp), last_freep);
+            PUT(SUCC(last_freep), bp);
+            PUT(SUCC(bp), NULL);
+            last_freep = bp;
+        }
+
+        bp = last_freep;
     }
     else if (!prev_alloc && next_alloc)
     { /* Case 3 */
@@ -138,6 +164,30 @@ static void *coalesce(void *bp)
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+
+
+        //가용 블럭 리스트에서 제거 및 연결
+        remove_block(bp);
+
+        //내가 last_freep인 경우
+        if ( bp == last_freep)
+        {
+            if (GET(PREC(bp)))
+            {
+                PUT(SUCC((void *)GET(PREC(bp))), (void *)bp);
+            }
+        }
+        //내가 last_freep가 아닌 경우
+        else
+        {
+            PUT(PREC(bp), last_freep);
+            PUT(SUCC(last_freep), bp);
+            
+            PUT(SUCC(bp), NULL);
+            last_freep = bp;
+        }
+
+        bp = last_freep;
     }
     else
     { /* Case 4 */
@@ -148,6 +198,24 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
     return bp;
+}
+
+//ING
+static void remove_block(void *bp)
+{
+    void *bp_temp = bp;
+    void *pre_free, *suc_free;
+    pre_free = (void *)GET(PREC(bp));
+    suc_free = (void *)GET(SUCC(bp));
+
+    if (pre_free)
+    {
+        PUT(SUCC(pre_free), suc_free);
+    }
+    if (suc_free)
+    {
+        PUT(PREC(suc_free), pre_free);
+    }
 }
 
 static void *extend_heap(size_t words)
@@ -286,8 +354,9 @@ static void place(void *bp, size_t asize)
         {
             last_freep = NULL;
         }
-        else if(pre_free && !(suc_free)){
-            last_freep = (void*) GET(PREC(bp));
+        else if (pre_free && !(suc_free))
+        {
+            last_freep = (void *)GET(PREC(bp));
         }
     }
 
