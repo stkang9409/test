@@ -50,6 +50,12 @@ team_t team = {
 #define GET(p) (*(unsigned int *)(p))
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
 
+/* Read and write a word at address p for free block*/
+#define GET_FREELIST(p) (*(char *)(p))
+#define PUT_FREELIST(p, val) (*(char *)(p) = (val))
+
+
+
 /* Read the size and allocated fields from address p */
 #define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
@@ -100,10 +106,11 @@ int mm_init(void)
 
     heap_listp += (2 * WSIZE);
 
-    // printf("*****mm_init*******\n");
+    
+    printf("\n----mm_init-----\n");
     // printf("\nheap listp: %p\n", heap_listp);
-    // printf("PR_header:     %p\n", HDRP(heap_listp));
-    // printf("PR_footer:     %p\n", FTRP(heap_listp));
+    // printf("PR_header: %p\n", HDRP(heap_listp));
+    // printf("PR_footer: %p\n", FTRP(heap_listp));
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     // if ((tmp = extend_heap(CHUNKSIZE / WSIZE)) == NULL)
@@ -119,13 +126,17 @@ int mm_init(void)
 
 static void *coalesce(void *bp)
 {
+    printf("\n----coalesce-----\n");
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 
     size_t size = GET_SIZE(HDRP(bp));
+    
     if (last_freep == 0){
+        last_freep = bp;
         return bp;
     }
+
     if (prev_alloc && next_alloc)
     { /* Case 1 */
         if (bp == last_freep){
@@ -232,13 +243,15 @@ static void *coalesce(void *bp)
             last_freep = bp;
         }
     }
+
     bp = last_freep;
     return bp;
 }
 
-//ING
 static void remove_block(void *bp)
 {
+    
+    printf("\n----remove_block-----\n");
     void *bp_temp = bp;
     void *pre_free, *suc_free;
     pre_free = (void *)GET(PREC(bp));
@@ -256,6 +269,7 @@ static void remove_block(void *bp)
 
 static void *extend_heap(size_t words)
 {
+    printf("\n----extend_heap-----\n");
     char *bp;
     size_t size;
     /* Allocate an even number of words to maintain alignment */
@@ -283,11 +297,13 @@ static void *extend_heap(size_t words)
  */
 void *mm_malloc(size_t size)
 {
+
+    
     size_t asize;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     char *bp;
 
-    // printf("\n*****mm_malloc*******\n");
+    printf("\n----mm_malloc-----\n");
 
     /* Ignore spurious requests */
     if (size == 0)
@@ -313,12 +329,20 @@ void *mm_malloc(size_t size)
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
+    
+    // if(last_freep != 0){
+    //     PUT(SUCC(last_freep),bp);
+    //     PUT(PREC(bp), last_freep);
+    //     last_freep = bp;
+    // }
+
     place(bp, asize);
     return bp;
 }
 
 static void *find_fit(size_t asize)
 {
+    printf("\n----find_fit-----\n");
     /* First-fit search */
     void *bp;
     for (bp = last_freep; bp != 0; bp = (void *)GET(PREC(bp)))
@@ -346,20 +370,36 @@ static void place(void *bp, size_t asize)
 
     void *bp_temp = bp;
     void *pre_free, *suc_free;
-    pre_free = (void *)GET(PREC(bp));
+    pre_free = (void*)GET(PREC(bp));
     suc_free = (void *)GET(SUCC(bp));
-
+    
+    printf("\n----POINT 1-----\n");
+    
+    
+    
+    
     if (pre_free)
     {
+        printf("pre_free: %p\n",pre_free);        
+        
+        printf("heap_listp: %p\n",heap_listp);
+        printf("SUCC(pre_free): %p\n",SUCC(pre_free));
+        printf("suc_free: %p\n",suc_free);
         PUT(SUCC(pre_free), suc_free);
     }
+    printf("\n----POINT 2-----\n");
+    
     if (suc_free)
     {
         PUT(PREC(suc_free), pre_free);
     }
-
+    printf("\n----POINT 3-----\n");
+    
     if ((csize - asize) >= (2 * DSIZE))
     {
+
+        
+        printf("\n*****Place case 1*******\n");
 
         PUT(HDRP(bp), PACK(asize, 1)); // heap list
         PUT(FTRP(bp), PACK(asize, 1));
@@ -374,15 +414,25 @@ static void place(void *bp, size_t asize)
         }
         else
         {
+            // printf("last_freep: %p \n", last_freep);
             PUT(PREC(bp), last_freep);
-            PUT(SUCC(bp), NULL);
+            
+            // printf("bp: %p \n", bp);            
+            // printf("SUCC(bp): %p \n", SUCC(bp));
+            PUT(SUCC(bp), 0);
+            
+            // printf("last_freep: %p", last_freep);
+            ///***ERROR DETECTED!!!!! ***///
             PUT(SUCC(last_freep), bp);
+            
         }
 
         last_freep = bp;
+        // printf("____point 4______\n");
     }
     else // 갖고 온 블록만 딱 넣을 수 있는 상황. free block이 나올수 없음.
     {
+        printf("\n*****Place case 2*******\n");
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
 
@@ -408,6 +458,7 @@ static void place(void *bp, size_t asize)
  */
 void mm_free(void *bp)
 {
+    printf("\n----mm_free-----\n");
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
@@ -419,6 +470,7 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *bp, size_t size)
 {
+    printf("\n----mm_realloc-----\n");
     void *oldbp = bp;
     void *newbp;
     size_t copySize;
