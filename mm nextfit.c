@@ -57,7 +57,8 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
-static char *start_nextfit = heap_listp;
+static char *heap_listp = 0;
+static char *start_nextfit = 0;
 
 static void *coalesce(void *bp)
 {
@@ -89,6 +90,7 @@ static void *coalesce(void *bp)
     PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
     bp = PREV_BLKP(bp);
   }
+  start_nextfit = bp;
   return bp;
 }
 static void *extend_heap(size_t words)
@@ -111,13 +113,11 @@ static void *extend_heap(size_t words)
   return coalesce(bp);
 }
 
-static char *heap_listp;
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-    printf("*************init *************");
 
   /* create 초기 빈 heap*/
   if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
@@ -129,6 +129,7 @@ int mm_init(void)
   PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
   PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
   heap_listp += (2 * WSIZE);
+  start_nextfit = heap_listp;
 
   if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
     return -1;
@@ -146,28 +147,34 @@ void mm_free(void *bp)
 
 static void *find_fit(size_t asize)
 { // first fit 검색을 수행
-  printf("*************find fit *************");
   void *bp;
-  for (bp = NEXT_BLKP(start_nextfit); bp != start_nextfit; bp = NEXT_BLKP(bp))
+  // printf("**********find _ fit **********\n");
+  for (bp = start_nextfit; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
   {
+    // printf("case1 \n");
     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
     {
+      // printf("case2 \n");
       return bp;
     }
-    if (GET_SIZE(HDRP(bp)) == 0)
+  }
+  for (bp = heap_listp; bp != start_nextfit; bp = NEXT_BLKP(bp))
+  {
+    // printf("case3 \n");
+    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
     {
-      printf("*************heap_listp *************");
-
-      bp = heap_listp;
+      // printf("case4 \n");
+      return bp;
     }
   }
-
+  // printf("case5 \n");
   return NULL;
 }
 
 static void place(void *bp, size_t asize)
 { // 요청한 블록을 가용 블록의 시작 부분에 배치, 나머지 부분의 크기가 최소 블록크기와 같거나 큰 경우에만 분할하는 함수.
   size_t csize = GET_SIZE(HDRP(bp));
+
   if ((csize - asize) >= (2 * DSIZE))
   {
     PUT(HDRP(bp), PACK(asize, 1));
@@ -181,8 +188,9 @@ static void place(void *bp, size_t asize)
     PUT(HDRP(bp), PACK(csize, 1));
     PUT(FTRP(bp), PACK(csize, 1));
   }
-} /* * mm_malloc - Allocate a block by incrementing the brk pointer.  *     Always allocate a block whose size is a multiple of the alignment.  */
-void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
+}
+
+void *mm_malloc(size_t size)
 {
   size_t asize;      // 블록 사이즈 조정
   size_t extendsize; // heap에 맞는 fit이 없으면 확장하기 위한 사이즈
@@ -214,7 +222,6 @@ void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
     return NULL;
   }
   place(bp, asize);
-  start_nextfit = bp;
   return bp;
 }
 
