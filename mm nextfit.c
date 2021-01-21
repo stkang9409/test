@@ -1,13 +1,7 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
+ * mm.c - memory-efficient malloc package.
  * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * implicit list로 구현한 버전
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +62,7 @@ static void *coalesce(void *bp)
 
   if (prev_alloc && next_alloc)
   { // case 1 - 이전과 다음 블록이 모두 할당 되어있는 경우, 현재 블록의 상태는 할당에서 가용으로 변경
+    start_nextfit = bp;
     return bp;
   }
   else if (prev_alloc && !next_alloc)
@@ -131,8 +126,7 @@ int mm_init(void)
   heap_listp += (2 * WSIZE);
   start_nextfit = heap_listp;
 
-  if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
-    return -1;
+  if (extend_heap(CHUNKSIZE / WSIZE) == NULL) return -1;
   return 0;
 }
 
@@ -146,28 +140,17 @@ void mm_free(void *bp)
 }
 
 static void *find_fit(size_t asize)
-{ // first fit 검색을 수행
+{ // next fit 검색을 수행
   void *bp;
-  // printf("**********find _ fit **********\n");
+
   for (bp = start_nextfit; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
   {
-    // printf("case1 \n");
-    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-    {
-      // printf("case2 \n");
-      return bp;
-    }
+    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) return bp;
   }
-  for (bp = heap_listp; bp != start_nextfit; bp = NEXT_BLKP(bp))
+  for (bp = heap_listp; bp != start_nextfit; bp = NEXT_BLKP(bp)) // 위에서 못찾은 걸 처음으로 돌아가서 다시 탐색 -> next_fit방식
   {
-    // printf("case3 \n");
-    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-    {
-      // printf("case4 \n");
-      return bp;
-    }
+    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) return bp;
   }
-  // printf("case5 \n");
   return NULL;
 }
 
@@ -229,22 +212,30 @@ void *mm_malloc(size_t size)
  * mm_free - Freeing a block does nothing.
  */
 
-/*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
- */
-void *mm_realloc(void *ptr, size_t size)
-{
-  void *oldptr = ptr;
-  void *newptr;
-  size_t copySize;
+void* mm_realloc(void *ptr, size_t size){         // 크기 줄이는건 다루지 못함.
+        size_t oldsize;
+        void *newptr;
+        oldsize = GET_SIZE(HDRP(ptr));
+        size_t newsize; 
+        if (size<=DSIZE) {
+            newsize = 2*DSIZE;   
+        }
+        else{
+            newsize = DSIZE* ( (size + (DSIZE)+ (DSIZE-1)) / DSIZE );
+        }
 
-  newptr = mm_malloc(size);
-  if (newptr == NULL)
-    return NULL;
-  copySize = GET_SIZE(HDRP(oldptr));
-  if (size < copySize)
-    copySize = size;
-  memcpy(newptr, oldptr, copySize);
-  mm_free(oldptr);
-  return newptr;
+        if(ptr==NULL){
+            return NULL;
+        }        
+        newptr = malloc(size);
+        if(newsize == oldsize) return ptr;
+       
+
+        if(newsize<oldsize){
+            oldsize = size;
+        }
+        memcpy(newptr,ptr,oldsize);
+        mm_free(ptr);
+        return newptr;
+
 }
