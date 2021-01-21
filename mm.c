@@ -70,6 +70,7 @@ team_t team = {
 static char *heap_listp;
 static char *free_listp;
 
+// 가용리스트에서 할당된 블록 빼기
 static void detach_from_list(void *bp)
 {
     if (N(bp) != NULL)
@@ -82,6 +83,7 @@ static void detach_from_list(void *bp)
     }
 }
 
+// 가용리스트 최전방에 새 가용 블록 넣기
 static void update_free(void *bp)
 {
     size_t size = GET_SIZE(HDRP(bp));
@@ -167,6 +169,7 @@ static void *find_fit(size_t size)
         num++;
     }
 
+    //24는 원래 33이었는데 24를 넣어도 테스트 케이스를 감당하여 메모리 낭비를 줄이기 위해 24로 설정한 것임.
     while (num < 24)
     {
         bp = N(GET_SEGP(num));
@@ -200,7 +203,7 @@ static void *place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
         PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
     }
-    else if (asize >= 100)
+    else if (asize >= 100) //이거는 그냥 이렇게 하면 테스트케이스에 대해서 단편화가 안일어납니다. 안해도 됨.
     {
         PUT(HDRP(bp), PACK(remainSize, 0));
         PUT(FTRP(bp), PACK(remainSize, 0));
@@ -283,18 +286,17 @@ void mm_free(void *ptr)
 
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *new_ptr = ptr; /* Pointer to be returned */
+    void *new_ptr = ptr;
     void *bp;
-    size_t new_size = size; /* Size of new block */
-    int remainder;          /* Adequacy of block sizes */
-    int extendsize;         /* Size of heap extension */
-    int block_buffer;       /* Size of block buffer */
+    size_t new_size = size;
+    int remainder;
+    int extendsize;
+    int block_buffer;
 
-    /* Ignore invalid block size */
     if (size == 0)
         return NULL;
 
-    /* Adjust block size to include boundary tag and alignment requirements */
+    // 정렬기준 맞추기
     if (new_size <= DSIZE)
     {
         new_size = 2 * DSIZE;
@@ -304,15 +306,14 @@ void *mm_realloc(void *ptr, size_t size)
         new_size = ALIGN(size + DSIZE);
     }
 
-    /* Calculate block buffer */
     block_buffer = GET_SIZE(HDRP(ptr)) - new_size; //얼마나 더 큰가? 플러스면 작은거, 마이너스면 큰거
 
-    /* Allocate more space if overhead falls below the minimum */
     if (block_buffer < 0) //늘리고싶다.
     {
         if (!GET_ALLOC(HDRP(NEXT_BLKP(ptr))))
         {
             remainder = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) - new_size;
+            // 뒤에꺼랑 합치면 사이즈에 맞으면 그냥 뒤로 늘리기.
             if (remainder >= 0)
             {
                 detach_from_list(NEXT_BLKP(ptr));
@@ -320,9 +321,20 @@ void *mm_realloc(void *ptr, size_t size)
                 PUT(HDRP(ptr), PACK(new_size + remainder, 1));
                 PUT(FTRP(ptr), PACK(new_size + remainder, 1));
             }
+            else // 안맞으면 원래 하던대로
+            {
+                new_ptr = mm_malloc(new_size - DSIZE);
+                if (new_ptr == NULL)
+                {
+                    return NULL;
+                }
+                memcpy(new_ptr, ptr, MIN(size, new_size));
+                mm_free(ptr);
+            }
         }
         else if (!GET_SIZE(HDRP(NEXT_BLKP(ptr))))
         {
+            // 재할당 되는 블록이 마지막 블록이면, 필요한 만큼만 늘린다.
             remainder = GET_SIZE(HDRP(ptr)) - new_size;
 
             extendsize = MAX(-remainder, CHUNKSIZE);
@@ -343,7 +355,12 @@ void *mm_realloc(void *ptr, size_t size)
         }
         else
         {
+            // 그냥 하던대로
             new_ptr = mm_malloc(new_size - DSIZE);
+            if (new_ptr == NULL)
+            {
+                return NULL;
+            }
             memcpy(new_ptr, ptr, MIN(size, new_size));
             mm_free(ptr);
         }
