@@ -226,14 +226,17 @@ static void *place(void *bp, size_t asize)
 
 int mm_init(void)
 {
+    // 일단 가용 블록의 크기별로 24개의 entry를 만듭니다.
     if ((free_listp = mem_sbrk(24 * WSIZE)) == (void *)-1)
         return -1;
 
+    // 각 가용 리스트의 초기값 NULL
     for (int i = 0; i < 24; i++)
     {
         PUT(free_listp + i * WSIZE, NULL);
     }
 
+    //이후 정상적으로 간다. (분할된 가용 리스트를 넣으려고 mem_sbrk를 하다 뒤로 밀린 mem_break를 기준으로 원래 하던대로 합니다.)
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
 
